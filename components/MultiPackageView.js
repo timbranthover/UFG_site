@@ -349,23 +349,27 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                                 </div>
                               </div>
 
-                              {/* Signer assignment — expanded per form */}
+                              {/* Signer assignment — expanded per form, scoped to this account's signers */}
                               {isFormExpanded && (
                                 <div className="border-t border-[#CCCABC] px-3 py-2">
                                   <p className="text-[11px] font-medium text-[#7A7870] mb-2">Signers for this form</p>
                                   <div className="space-y-1">
-                                    {orderedSigners.map((signer, orderIdx) => (
-                                      <div key={signer._nameKey} className="flex items-center gap-2 py-1">
-                                        <span
-                                          className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                                          style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
-                                        >
-                                          {orderIdx + 1}
-                                        </span>
-                                        <span className="text-xs text-[#404040] flex-1 truncate">{signer.name}</span>
-                                      </div>
-                                    ))}
-                                    {orderedSigners.length === 0 && (
+                                    {orderedSigners
+                                      .map((signer, orderIdx) => ({ signer, orderIdx }))
+                                      .filter(({ signer }) => (acct.signers || []).some(as => as.name.toLowerCase() === signer._nameKey))
+                                      .map(({ signer, orderIdx }) => (
+                                        <div key={signer._nameKey} className="flex items-center gap-2 py-1">
+                                          <span
+                                            className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                                            style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
+                                          >
+                                            {orderIdx + 1}
+                                          </span>
+                                          <span className="text-xs text-[#404040] flex-1 truncate">{signer.name}</span>
+                                        </div>
+                                      ))
+                                    }
+                                    {orderedSigners.filter(s => (acct.signers || []).some(as => as.name.toLowerCase() === s._nameKey)).length === 0 && (
                                       <p className="text-xs" style={{ color: 'var(--app-gray-3)' }}>No signers assigned yet</p>
                                     )}
                                   </div>

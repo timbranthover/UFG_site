@@ -63,15 +63,22 @@ const ResultsView = ({ account, onBack, onContinue }) => {
     });
   };
 
-  // ── Add / remove account ─────────────────────────────────────────────────────
-  const handleAddAccount = (newAcct) => {
-    if (additionalAccounts.length === 0) {
-      setPerAccountForms({ [account.accountNumber]: [...selectedForms] });
+  // ── Add / remove accounts ────────────────────────────────────────────────────
+  const handleAddAccounts = (newAccts) => {
+    const seedPrimary = additionalAccounts.length === 0;
+    const newPerAccount = {};
+    const newExpanded = {};
+    for (const acct of newAccts) {
+      newPerAccount[acct.accountNumber] = [];
+      newExpanded[acct.accountNumber] = true;
     }
-    setAdditionalAccounts(prev => [...prev, newAcct]);
-    setPerAccountForms(prev => ({ ...prev, [newAcct.accountNumber]: [] }));
-    // Expand the new section by default
-    setExpandedSections(prev => ({ ...prev, [newAcct.accountNumber]: true }));
+    if (seedPrimary) {
+      setPerAccountForms({ [account.accountNumber]: [...selectedForms], ...newPerAccount });
+    } else {
+      setPerAccountForms(prev => ({ ...prev, ...newPerAccount }));
+    }
+    setAdditionalAccounts(prev => [...prev, ...newAccts]);
+    setExpandedSections(prev => ({ ...prev, ...newExpanded }));
     setShowAccountPicker(false);
   };
 
@@ -131,14 +138,42 @@ const ResultsView = ({ account, onBack, onContinue }) => {
 
   // ── Account Picker Modal ─────────────────────────────────────────────────────
   const AccountPickerModal = () => {
+    const [pendingSelections, setPendingSelections] = React.useState(new Set());
+
     const existingNumbers = new Set(allAccounts.map(a => a.accountNumber));
-    const candidates = Object.values(MOCK_ACCOUNTS).filter(a => !existingNumbers.has(a.accountNumber));
-    const withCompat = candidates.map(candidate => {
+    // Only show accounts that share at least one signer name with the primary account
+    const primarySignerNames = new Set(account.signers.map(s => s.name.toLowerCase()));
+    const related = Object.values(MOCK_ACCOUNTS).filter(a =>
+      !existingNumbers.has(a.accountNumber) &&
+      a.signers.some(s => primarySignerNames.has(s.name.toLowerCase()))
+    );
+    const withCompat = related.map(candidate => {
       const check = canAccountsShareEnvelope([...allAccounts, candidate]);
       return { account: candidate, compatible: check.compatible, reason: check.reason };
     });
     const compatible = withCompat.filter(c => c.compatible);
     const incompatible = withCompat.filter(c => !c.compatible);
+
+    const toggleSelection = (acctNum) => {
+      setPendingSelections(prev => {
+        const next = new Set(prev);
+        if (next.has(acctNum)) next.delete(acctNum); else next.add(acctNum);
+        return next;
+      });
+    };
+
+    const selectedCount = [...pendingSelections].filter(num =>
+      compatible.some(c => c.account.accountNumber === num)
+    ).length;
+
+    const handleConfirm = () => {
+      if (selectedCount === 0) return;
+      const newAccts = compatible
+        .filter(c => pendingSelections.has(c.account.accountNumber))
+        .map(c => c.account);
+      if (newAccts.length === 0) return;
+      handleAddAccounts(newAccts);
+    };
 
     React.useEffect(() => {
       const onKey = (e) => { if (e.key === 'Escape') setShowAccountPicker(false); };
@@ -156,15 +191,15 @@ const ResultsView = ({ account, onBack, onContinue }) => {
 
         {/* Panel */}
         <div
-          className="relative bg-white w-full max-w-md max-h-[70vh] flex flex-col overflow-hidden"
-          style={{ borderRadius: 'var(--app-radius)', boxShadow: '0 20px 60px -10px rgba(0,0,0,0.3)', border: '1px solid var(--app-card-border)' }}
+          className="relative bg-white w-full max-w-md flex flex-col overflow-hidden"
+          style={{ borderRadius: 'var(--app-radius)', boxShadow: '0 24px 64px -12px rgba(0,0,0,0.35)', border: '1px solid var(--app-card-border)', maxHeight: 'min(72vh, 540px)' }}
         >
           {/* Header */}
-          <div className="px-5 py-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--app-card-border)' }}>
+          <div className="px-5 pt-4 pb-3.5 border-b flex items-start justify-between flex-shrink-0" style={{ borderColor: 'var(--app-card-border)' }}>
             <div>
-              <h2 className="text-base font-semibold" style={{ color: 'var(--app-gray-6)' }}>Add account to envelope</h2>
+              <h2 className="text-base font-semibold" style={{ color: 'var(--app-gray-6)' }}>Add accounts to envelope</h2>
               <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-4)' }}>
-                Select an eligible account to include in the same eSign envelope.
+                Showing related accounts with shared signers. Select one or more.
               </p>
             </div>
             <button
@@ -178,40 +213,50 @@ const ResultsView = ({ account, onBack, onContinue }) => {
             </button>
           </div>
 
-          {/* Account list */}
-          <div className="overflow-y-auto flex-1">
-            {compatible.length === 0 && incompatible.length === 0 && (
+          {/* Scrollable account list */}
+          <div className="overflow-y-auto flex-1 min-h-0">
+            {related.length === 0 && (
               <div className="px-5 py-8 text-center">
-                <p className="text-sm" style={{ color: 'var(--app-gray-4)' }}>No other accounts available.</p>
+                <p className="text-sm" style={{ color: 'var(--app-gray-4)' }}>No related accounts available to add.</p>
               </div>
             )}
 
-            {compatible.map(({ account: cand }) => (
-              <button
-                key={cand.accountNumber}
-                onClick={() => handleAddAccount(cand)}
-                className="w-full text-left px-5 py-3.5 border-b transition-colors hover:bg-[#F5F0E1]"
-                style={{ borderColor: 'var(--app-card-border)' }}
-              >
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>
-                    {cand.accountNumber}
-                  </span>
-                  <span className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>
-                    {cand.accountName}
-                  </span>
-                  <AccountTypeBadge acct={cand} />
-                  <span className="ml-auto flex-shrink-0">
-                    <svg className="w-4 h-4" style={{ color: 'var(--app-gray-3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </span>
-                </div>
-                <p className="text-xs" style={{ color: 'var(--app-gray-4)' }}>
-                  {cand.signers.map(s => s.name).join(' · ')}
-                </p>
-              </button>
-            ))}
+            {compatible.map(({ account: cand }) => {
+              const isSelected = pendingSelections.has(cand.accountNumber);
+              return (
+                <button
+                  key={cand.accountNumber}
+                  onClick={() => toggleSelection(cand.accountNumber)}
+                  className={`w-full text-left px-5 py-3.5 border-b transition-colors flex items-start gap-3 ${
+                    isSelected ? 'bg-[#F5F0E1]' : 'hover:bg-[#F5F0E1]/60'
+                  }`}
+                  style={{ borderColor: 'var(--app-card-border)' }}
+                >
+                  {/* Checkbox */}
+                  <div
+                    className={`mt-0.5 w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-all ${
+                      isSelected ? 'bg-[#8A000A] border-[#8A000A]' : 'bg-white border-[#CCCABC]'
+                    }`}
+                  >
+                    {isSelected && (
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>{cand.accountNumber}</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>{cand.accountName}</span>
+                      <AccountTypeBadge acct={cand} />
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--app-gray-4)' }}>
+                      {cand.signers.map(s => s.name).join(' · ')}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
 
             {incompatible.length > 0 && (
               <>
@@ -224,23 +269,52 @@ const ResultsView = ({ account, onBack, onContinue }) => {
                 {incompatible.map(({ account: cand, reason }) => (
                   <div
                     key={cand.accountNumber}
-                    className="px-5 py-3.5 border-b opacity-55"
+                    className="px-5 py-3.5 border-b opacity-50 flex items-start gap-3"
                     style={{ borderColor: 'var(--app-card-border)' }}
                   >
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-gray-4)' }}>
-                        {cand.accountNumber}
-                      </span>
-                      <span className="text-sm font-medium" style={{ color: 'var(--app-gray-5)' }}>
-                        {cand.accountName}
-                      </span>
-                      <AccountTypeBadge acct={cand} />
+                    {/* Disabled checkbox placeholder for alignment */}
+                    <div className="mt-0.5 w-4 h-4 rounded flex-shrink-0 border-2 bg-white border-[#CCCABC]" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-gray-4)' }}>{cand.accountNumber}</span>
+                        <span className="text-sm font-medium" style={{ color: 'var(--app-gray-5)' }}>{cand.accountName}</span>
+                        <AccountTypeBadge acct={cand} />
+                      </div>
+                      <p className="text-xs" style={{ color: '#8B5E0A' }}>{reason}</p>
                     </div>
-                    <p className="text-xs" style={{ color: '#8B5E0A' }}>{reason}</p>
                   </div>
                 ))}
               </>
             )}
+          </div>
+
+          {/* Footer with confirm button */}
+          <div
+            className="flex items-center justify-between px-5 py-3 border-t flex-shrink-0"
+            style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-1)' }}
+          >
+            <button
+              onClick={() => setShowAccountPicker(false)}
+              className="text-sm px-3 py-1.5 rounded transition-colors hover:bg-gray-100"
+              style={{ color: 'var(--app-gray-4)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={selectedCount === 0}
+              className="text-sm font-semibold px-4 py-1.5 rounded transition-all text-white"
+              style={{
+                backgroundColor: selectedCount > 0 ? 'var(--app-bordeaux-1)' : 'var(--app-gray-2)',
+                opacity: selectedCount === 0 ? 0.55 : 1,
+                cursor: selectedCount === 0 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {selectedCount === 0
+                ? 'Select accounts'
+                : `Add ${selectedCount} account${selectedCount > 1 ? 's' : ''} →`
+              }
+            </button>
           </div>
         </div>
       </div>
