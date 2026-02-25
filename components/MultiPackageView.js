@@ -1,35 +1,67 @@
 /**
- * MultiPackageView — review, assign signers, and send a multi-account envelope.
+ * MultiPackageView — fill forms and send a multi-account envelope.
  *
  * Props:
  *   multiAccountData  { accounts: [{ account, forms }] }
  *   onBack()          — return to ResultsView
- *   onSendForSignature(packageData) — trigger send in app.js
- *   onSaveDraft(name, data)         — save as draft
+ *   onSendForSignature(packageData)
+ *   onSaveDraft(name, data)
+ *
+ * Layout mirrors PackageView:
+ *   Left:  form fill component (account-specific)
+ *   Right: sidebar — accounts → forms → signer assignment + signing order
+ *   Bottom nav: Previous / Next form across all accounts
+ *   Fixed bottom: floating glass CTA
  */
 const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSaveDraft }) => {
   const { accounts } = multiAccountData;
 
-  // ── Build union signers list ────────────────────────────────────────────────
-  // Deduplicated by name (case-insensitive); _nameKey used as stable identity
+  // ── Flat ordered list of all forms across accounts ───────────────────────────
+  // [{ code, account }]
+  const allForms = React.useMemo(() => {
+    const result = [];
+    for (const { account, forms } of accounts) {
+      for (const code of forms) {
+        result.push({ code, account });
+      }
+    }
+    return result;
+  }, [accounts]);
+
+  // ── Navigation ───────────────────────────────────────────────────────────────
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const currentEntry   = allForms[currentIndex] || allForms[0];
+  const currentFormCode   = currentEntry?.code;
+  const currentAccount    = currentEntry?.account;
+  const currentDataKey    = currentEntry ? `${currentAccount.accountNumber}_${currentFormCode}` : null;
+
+  // ── Form data ────────────────────────────────────────────────────────────────
+  // Keyed by `${accountNumber}_${formCode}` to avoid collision when same code appears on multiple accounts
+  const [formDataMap, setFormDataMap] = React.useState({});
+  const currentFormData = currentDataKey ? (formDataMap[currentDataKey] || {}) : {};
+
+  const updateFormData = (field, value) => {
+    if (!currentDataKey) return;
+    setFormDataMap(prev => ({
+      ...prev,
+      [currentDataKey]: { ...prev[currentDataKey], [field]: value }
+    }));
+  };
+
+  // ── Union signers (nameKey-based dedup) ──────────────────────────────────────
   const unionSigners = React.useMemo(() => {
     const seen = new Map();
     for (const { account } of accounts) {
       for (const signer of (account.signers || [])) {
         const key = signer.name.toLowerCase();
-        if (!seen.has(key)) {
-          seen.set(key, { ...signer, _nameKey: key });
-        }
+        if (!seen.has(key)) seen.set(key, { ...signer, _nameKey: key });
       }
     }
     return [...seen.values()];
   }, [accounts]);
 
-  // ── Signers state ───────────────────────────────────────────────────────────
-  const [signerOrder, setSignerOrder] = React.useState(
-    () => unionSigners.map(s => s._nameKey)
-  );
-  // signerDetails: { [nameKey]: { email } }
+  // ── Signer order + details ───────────────────────────────────────────────────
+  const [signerOrder, setSignerOrder] = React.useState(() => unionSigners.map(s => s._nameKey));
   const [signerDetails, setSignerDetails] = React.useState(() => {
     const init = {};
     for (const s of unionSigners) {
@@ -38,64 +70,61 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
     return init;
   });
 
-  const [customMessage, setCustomMessage] = React.useState('');
-  const [isSending, setIsSending] = React.useState(false);
-  const [showSaveDraftModal, setShowSaveDraftModal] = React.useState(false);
-
-  // ── Derived ─────────────────────────────────────────────────────────────────
   const orderedSigners = signerOrder
     .map(key => unionSigners.find(s => s._nameKey === key))
     .filter(Boolean);
 
-  const canSend = orderedSigners.length > 0;
-
-  const totalForms = accounts.reduce((sum, { forms }) => sum + forms.length, 0);
-
-  // ── Signer reorder ──────────────────────────────────────────────────────────
   const moveSignerUp = (idx) => {
     if (idx === 0) return;
-    setSignerOrder(prev => {
-      const next = [...prev];
-      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-      return next;
-    });
+    setSignerOrder(prev => { const n = [...prev]; [n[idx-1], n[idx]] = [n[idx], n[idx-1]]; return n; });
   };
-
   const moveSignerDown = (idx) => {
     if (idx === signerOrder.length - 1) return;
-    setSignerOrder(prev => {
-      const next = [...prev];
-      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-      return next;
-    });
+    setSignerOrder(prev => { const n = [...prev]; [n[idx], n[idx+1]] = [n[idx+1], n[idx]]; return n; });
   };
-
   const handleEmailChange = (nameKey, email) => {
     setSignerDetails(prev => ({ ...prev, [nameKey]: { ...prev[nameKey], email } }));
   };
 
-  // ── Account type badge ───────────────────────────────────────────────────────
-  const accountTypeBadge = (account) => {
-    const typeColors = {
-      RMA_INDIVIDUAL: 'bg-blue-50 text-blue-700 border-blue-200',
-      RMA_JOINT:      'bg-purple-50 text-purple-700 border-purple-200',
-      TRUST:          'bg-amber-50 text-amber-700 border-amber-200',
-      IRA_ROTH:       'bg-emerald-50 text-emerald-700 border-emerald-200',
-      IRA_TRADITIONAL:'bg-teal-50 text-teal-700 border-teal-200'
-    };
-    const cls = typeColors[account.accountTypeKey] || 'bg-gray-50 text-gray-600 border-gray-200';
-    return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border tracking-wide ${cls}`}>
-        {account.accountType}
-      </span>
-    );
+  // ── Sidebar collapse state ───────────────────────────────────────────────────
+  const [expandedAccounts, setExpandedAccounts] = React.useState(() => {
+    const init = {};
+    for (const { account } of accounts) init[account.accountNumber] = true;
+    return init;
+  });
+  const [expandedForms, setExpandedForms] = React.useState(() => {
+    const init = {};
+    if (allForms[0]) init[`${allForms[0].account.accountNumber}_${allForms[0].code}`] = true;
+    return init;
+  });
+
+  const toggleAccountExpansion = (acctNum) =>
+    setExpandedAccounts(prev => ({ ...prev, [acctNum]: !prev[acctNum] }));
+
+  const toggleFormExpansion = (acctNum, code) => {
+    const key = `${acctNum}_${code}`;
+    setExpandedForms(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // ── Send ────────────────────────────────────────────────────────────────────
+  // When navigation changes, auto-expand the current form's account + form in sidebar
+  React.useEffect(() => {
+    if (!currentEntry) return;
+    const acctNum = currentAccount.accountNumber;
+    const key = `${acctNum}_${currentFormCode}`;
+    setExpandedAccounts(prev => ({ ...prev, [acctNum]: true }));
+    setExpandedForms(prev => ({ ...prev, [key]: true }));
+  }, [currentIndex]);
+
+  // ── Send / draft ─────────────────────────────────────────────────────────────
+  const [isSending, setIsSending] = React.useState(false);
+  const [customMessage, setCustomMessage] = React.useState('');
+  const [showSaveDraftModal, setShowSaveDraftModal] = React.useState(false);
+
+  const canSend = orderedSigners.length > 0;
+
   const handleSend = async () => {
     if (!canSend || isSending) return;
     setIsSending(true);
-
     const packageData = {
       ...multiAccountData,
       signers: orderedSigners,
@@ -104,194 +133,335 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
       sequentialSigning: orderedSigners.length >= 2,
       customMessage
     };
-
-    try {
-      await onSendForSignature(packageData);
-    } finally {
-      setIsSending(false);
-    }
+    try { await onSendForSignature(packageData); }
+    finally { setIsSending(false); }
   };
 
-  // ── Save draft ──────────────────────────────────────────────────────────────
   const handleSaveDraftConfirm = (draftName) => {
-    onSaveDraft(draftName, { signerDetails, customMessage });
+    onSaveDraft(draftName, { formDataMap, signerDetails, customMessage });
     setShowSaveDraftModal(false);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-  return (
-    <div className="max-w-3xl space-y-5 pb-28">
+  // ── Form fill renderer ───────────────────────────────────────────────────────
+  const renderFormComponent = () => {
+    if (!currentEntry) return null;
+    const props = {
+      formData: currentFormData,
+      onUpdateField: updateFormData,
+      selectedSigners: orderedSigners,
+      account: currentAccount
+    };
+    switch (currentFormCode) {
+      case 'AC-TF':   return <ACTFForm   {...props} />;
+      case 'AC-FT':   return <ACFTForm   {...props} />;
+      case 'CL-ACRA': return <CLACRAForm {...props} />;
+      case 'LA-GEN':  return <LAGENForm  {...props} />;
+      default: {
+        const form = FORMS_DATA.find(f => f.code === currentFormCode);
+        return (
+          <div className="mobile-form-shell bg-white shadow-lg max-w-3xl mx-auto p-8">
+            <div className="border-b-2 border-[#404040] pb-4">
+              <h2 className="text-xl font-bold">{form?.name}</h2>
+              <p className="text-sm text-[#7A7870] mt-1">{form?.description}</p>
+            </div>
+            <div className="mt-6 p-8 bg-[#F5F0E1] rounded text-center">
+              <svg className="w-16 h-16 text-[#B8B3A2] mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-[#7A7870]">Form preview coming soon</p>
+            </div>
+          </div>
+        );
+      }
+    }
+  };
 
-      {/* Header */}
-      <div className="flex items-start gap-3">
+  const accountTypeBadge = (acct) => {
+    const typeColors = {
+      RMA_INDIVIDUAL: 'bg-blue-50 text-blue-700 border-blue-200',
+      RMA_JOINT:      'bg-purple-50 text-purple-700 border-purple-200',
+      TRUST:          'bg-amber-50 text-amber-700 border-amber-200',
+      IRA_ROTH:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+      IRA_TRADITIONAL:'bg-teal-50 text-teal-700 border-teal-200',
+    };
+    const cls = typeColors[acct.accountTypeKey] || 'bg-gray-50 text-gray-600 border-gray-200';
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border tracking-wide ${cls}`}>
+        {acct.accountType}
+      </span>
+    );
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <div className="mobile-package-view pb-28">
+
+      {/* Header with back nav */}
+      <div className="flex items-center justify-between mb-6">
         <button
           onClick={onBack}
-          className="mt-0.5 flex items-center gap-1.5 text-sm font-medium px-2.5 py-1.5 rounded-md border transition-colors"
-          style={{ borderColor: 'var(--app-card-border)', color: 'var(--app-gray-5)', backgroundColor: 'white' }}
+          className="text-sm hover:underline flex items-center gap-1"
+          style={{ color: '#00759E' }}
         >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Back
+          Back to form selection
         </button>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--app-gray-6)' }}>
-            Review &amp; Send
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--app-gray-4)' }}>
-            {accounts.length} accounts · {totalForms} form{totalForms !== 1 ? 's' : ''} · {orderedSigners.length} signer{orderedSigners.length !== 1 ? 's' : ''}
-          </p>
-        </div>
+        <span className="text-sm" style={{ color: 'var(--app-gray-4)' }}>
+          Form {currentIndex + 1} of {allForms.length}
+        </span>
       </div>
 
-      {/* ── Accounts & Forms summary ── */}
-      <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: 'var(--app-card-border)', boxShadow: 'var(--app-card-shadow)' }}>
-        <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-1)' }}>
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--app-gray-4)' }}>
-            Accounts &amp; Forms
-          </p>
-        </div>
-        <ul className="divide-y" style={{ borderColor: 'var(--app-card-border)' }}>
-          {accounts.map(({ account, forms }) => {
-            const formObjs = forms
-              .map(code => FORMS_DATA.find(f => f.code === code))
-              .filter(Boolean);
-            return (
-              <li key={account.accountNumber} className="px-4 py-3">
-                <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <span className="font-mono text-xs font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>
-                    {account.accountNumber}
-                  </span>
-                  <span className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>
-                    {account.accountName}
-                  </span>
-                  {accountTypeBadge(account)}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {formObjs.map(form => (
-                    <span
-                      key={form.code}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium"
-                      style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-2)', color: 'var(--app-gray-6)' }}
-                    >
-                      <span className="font-mono font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>{form.code}</span>
-                      {form.name}
-                    </span>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {/* Main layout: form fill left, sidebar right */}
+      <div className="mobile-package-layout flex gap-4">
 
-      {/* ── Signers ── */}
-      <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: 'var(--app-card-border)', boxShadow: 'var(--app-card-shadow)' }}>
-        <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-1)' }}>
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--app-gray-4)' }}>
-              Signers
-            </p>
-            {orderedSigners.length >= 2 && (
-              <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color: 'var(--app-gray-4)', borderColor: 'var(--app-gray-1)', backgroundColor: 'var(--app-pastel-2)' }}>
-                Sequential signing
-              </span>
-            )}
-          </div>
-        </div>
-        <ul className="divide-y" style={{ borderColor: 'var(--app-card-border)' }}>
-          {orderedSigners.map((signer, idx) => {
-            const nameKey = signer._nameKey;
-            const currentEmail = signerDetails[nameKey]?.email || '';
-            const allEmails = signer.emails || (signer.email ? [signer.email] : []);
-
-            return (
-              <li key={nameKey} className="flex items-center gap-3 px-4 py-3">
-                {/* Order badge */}
-                <div
-                  className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
-                >
-                  {idx + 1}
-                </div>
-
-                {/* Signer info + email */}
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold" style={{ color: 'var(--app-gray-6)' }}>
-                      {signer.name}
-                    </span>
-                    <span className="text-xs" style={{ color: 'var(--app-gray-3)' }}>
-                      {signer.role}
-                    </span>
-                  </div>
-                  {/* Email selector */}
-                  {allEmails.length > 1 ? (
-                    <select
-                      value={currentEmail}
-                      onChange={e => handleEmailChange(nameKey, e.target.value)}
-                      className="text-xs rounded border px-2 py-1 focus:outline-none w-full max-w-xs"
-                      style={{ borderColor: 'var(--app-input-border)', color: 'var(--app-gray-6)' }}
-                    >
-                      {allEmails.map(email => (
-                        <option key={email} value={email}>{email}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="text-xs" style={{ color: 'var(--app-gray-3)' }}>{currentEmail}</span>
-                  )}
-                </div>
-
-                {/* Reorder buttons */}
-                {orderedSigners.length > 1 && (
-                  <div className="flex-shrink-0 flex flex-col gap-0.5">
-                    <button
-                      onClick={() => moveSignerUp(idx)}
-                      className={`p-0.5 rounded transition-opacity ${idx === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                      style={{ color: 'var(--app-gray-3)' }}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => moveSignerDown(idx)}
-                      className={`p-0.5 rounded transition-opacity ${idx === orderedSigners.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                      style={{ color: 'var(--app-gray-3)' }}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {/* ── Personal message ── */}
-      <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: 'var(--app-card-border)', boxShadow: 'var(--app-card-shadow)' }}>
-        <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-1)' }}>
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--app-gray-4)' }}>
-            Personal Message <span className="normal-case font-normal">(optional)</span>
-          </p>
-        </div>
-        <div className="p-4">
-          <textarea
-            value={customMessage}
-            onChange={e => setCustomMessage(e.target.value.slice(0, 150))}
-            placeholder="Add a note to your client…"
-            rows={3}
-            className="w-full rounded-md border px-3 py-2 text-sm resize-none focus:outline-none"
-            style={{ borderColor: 'var(--app-input-border)', color: 'var(--app-gray-6)' }}
-          />
-          <div className="flex justify-between items-center mt-1">
-            <span className="text-xs" style={{ color: 'var(--app-gray-3)' }}>Included in the DocuSign email to signers</span>
-            <span className={`text-xs font-medium ${customMessage.length >= 150 ? 'text-amber-600' : ''}`} style={customMessage.length < 150 ? { color: 'var(--app-gray-3)' } : {}}>
-              {customMessage.length}/150
+        {/* ── Left: form fill + navigation ── */}
+        <div className="flex-1 space-y-4">
+          {/* Account context bar */}
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-md text-sm"
+            style={{ backgroundColor: 'var(--app-pastel-1)', border: '1px solid var(--app-card-border)' }}
+          >
+            <span className="font-mono font-semibold text-xs" style={{ color: 'var(--app-bordeaux-1)' }}>
+              {currentAccount?.accountNumber}
             </span>
+            <span style={{ color: 'var(--app-gray-5)' }}>{currentAccount?.accountName}</span>
+            {currentAccount && accountTypeBadge(currentAccount)}
+          </div>
+
+          {renderFormComponent()}
+
+          {/* Prev / Next navigation */}
+          {allForms.length > 1 && (
+            <div className="mobile-form-nav flex items-center justify-between bg-white rounded-lg shadow-sm border border-[#CCCABC] p-4">
+              <button
+                onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+                disabled={currentIndex === 0}
+                className={`px-4 py-2 text-sm rounded-lg flex items-center gap-2 ${
+                  currentIndex === 0 ? 'text-[#B8B3A2] cursor-not-allowed' : 'text-[#5A5D5C] hover:bg-[#ECEBE4]'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous form
+              </button>
+
+              {/* Progress dots */}
+              <div className="flex items-center gap-1">
+                {allForms.map((entry, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentIndex(idx)}
+                    className={`rounded-full transition-all ${
+                      idx === currentIndex ? 'w-2 h-2' : 'w-1.5 h-1.5 opacity-40 hover:opacity-70'
+                    }`}
+                    style={{ backgroundColor: idx === currentIndex ? 'var(--app-bordeaux-1)' : 'var(--app-gray-3)' }}
+                    title={`${entry.account.accountNumber} — ${entry.code}`}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentIndex(i => Math.min(allForms.length - 1, i + 1))}
+                disabled={currentIndex === allForms.length - 1}
+                className={`px-4 py-2 text-sm rounded-lg flex items-center gap-2 ${
+                  currentIndex === allForms.length - 1 ? 'text-[#B8B3A2] cursor-not-allowed' : 'text-[#5A5D5C] hover:bg-[#ECEBE4] font-medium'
+                }`}
+              >
+                Next form
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right: sidebar ── */}
+        <div className="mobile-package-sidebar w-96 space-y-4">
+          <div className="mobile-package-sidebar-panel bg-white rounded-lg shadow-sm border border-[#CCCABC] p-4 sticky top-6">
+
+            {/* ── Account → Form tree ── */}
+            <h3 className="text-sm font-semibold text-[#404040] mb-3">Forms in this envelope</h3>
+            <div className="space-y-1 mb-5">
+              {accounts.map(({ account: acct, forms }) => {
+                const isAcctExpanded = expandedAccounts[acct.accountNumber] !== false;
+                return (
+                  <div key={acct.accountNumber}>
+                    {/* Account row */}
+                    <div
+                      onClick={() => toggleAccountExpansion(acct.accountNumber)}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-[#ECEBE4] transition-colors"
+                    >
+                      <svg
+                        className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150 ${isAcctExpanded ? 'rotate-90' : ''}`}
+                        style={{ color: 'var(--app-gray-4)' }}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="font-mono text-xs font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>
+                        {acct.accountNumber}
+                      </span>
+                      <span className="text-xs truncate" style={{ color: 'var(--app-gray-5)' }}>
+                        {acct.accountName}
+                      </span>
+                    </div>
+
+                    {/* Forms under account */}
+                    {isAcctExpanded && (
+                      <div className="ml-5 space-y-0.5 mt-0.5">
+                        {forms.map(code => {
+                          const form = FORMS_DATA.find(f => f.code === code);
+                          const formKey = `${acct.accountNumber}_${code}`;
+                          const flatIdx = allForms.findIndex(f => f.code === code && f.account.accountNumber === acct.accountNumber);
+                          const isCurrent = flatIdx === currentIndex;
+                          const isFormExpanded = expandedForms[formKey];
+
+                          return (
+                            <div key={code} className="border border-[#CCCABC] rounded mt-1">
+                              {/* Form header */}
+                              <div
+                                onClick={() => {
+                                  if (flatIdx >= 0) setCurrentIndex(flatIdx);
+                                  toggleFormExpansion(acct.accountNumber, code);
+                                }}
+                                className={`flex items-start gap-2 p-2 cursor-pointer transition-colors rounded ${
+                                  isCurrent ? 'bg-[#F5F0E1]' : 'hover:bg-[#ECEBE4]'
+                                }`}
+                              >
+                                <svg
+                                  className={`w-3.5 h-3.5 text-[#7A7870] mt-0.5 flex-shrink-0 transition-transform ${isFormExpanded ? 'rotate-90' : ''}`}
+                                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-medium text-[#404040] truncate">{form?.name || code}</span>
+                                    {isCurrent && (
+                                      <span className="text-[10px] text-[#5A5D5C] flex-shrink-0">← Viewing</span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-[#7A7870]">{code}</div>
+                                </div>
+                              </div>
+
+                              {/* Signer assignment — expanded per form */}
+                              {isFormExpanded && (
+                                <div className="border-t border-[#CCCABC] px-3 py-2">
+                                  <p className="text-[11px] font-medium text-[#7A7870] mb-2">Signers for this form</p>
+                                  <div className="space-y-1">
+                                    {orderedSigners.map((signer, orderIdx) => (
+                                      <div key={signer._nameKey} className="flex items-center gap-2 py-1">
+                                        <span
+                                          className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                                          style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
+                                        >
+                                          {orderIdx + 1}
+                                        </span>
+                                        <span className="text-xs text-[#404040] flex-1 truncate">{signer.name}</span>
+                                      </div>
+                                    ))}
+                                    {orderedSigners.length === 0 && (
+                                      <p className="text-xs" style={{ color: 'var(--app-gray-3)' }}>No signers assigned yet</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Signing order ── */}
+            <div className="border-t border-[#CCCABC] pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[#404040]">Signing order</h3>
+                {orderedSigners.length >= 2 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--app-gray-4)', borderColor: 'var(--app-gray-1)', backgroundColor: 'var(--app-pastel-2)' }}>
+                    Sequential
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {orderedSigners.map((signer, idx) => {
+                  const allEmails = signer.emails || (signer.email ? [signer.email] : []);
+                  const currentEmail = signerDetails[signer._nameKey]?.email || '';
+                  return (
+                    <div key={signer._nameKey} className="flex items-center gap-2">
+                      <span
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-[#404040] truncate">{signer.name}</p>
+                        {allEmails.length > 1 ? (
+                          <select
+                            value={currentEmail}
+                            onChange={e => handleEmailChange(signer._nameKey, e.target.value)}
+                            className="w-full text-[11px] border border-[#CCCABC] rounded px-1.5 py-0.5 mt-0.5 focus:outline-none"
+                          >
+                            {allEmails.map(e => <option key={e} value={e}>{e}</option>)}
+                          </select>
+                        ) : (
+                          <p className="text-[11px] text-[#8E8D83] truncate">{currentEmail}</p>
+                        )}
+                      </div>
+                      {orderedSigners.length > 1 && (
+                        <div className="flex flex-col gap-0.5 flex-shrink-0">
+                          <button
+                            onClick={() => moveSignerUp(idx)}
+                            className={`p-0.5 rounded transition-opacity ${idx === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
+                          >
+                            <svg className="w-3 h-3 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => moveSignerDown(idx)}
+                            className={`p-0.5 rounded transition-opacity ${idx === orderedSigners.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
+                          >
+                            <svg className="w-3 h-3 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── Personal message ── */}
+            <div className="border-t border-[#CCCABC] pt-4 mt-4">
+              <label className="block text-xs font-medium text-[#5A5D5C] mb-1.5">
+                Personal message <span className="font-normal text-[#8E8D83]">(optional)</span>
+              </label>
+              <textarea
+                value={customMessage}
+                onChange={e => setCustomMessage(e.target.value.slice(0, 150))}
+                placeholder="Add a note for the signers…"
+                rows={2}
+                className="w-full px-3 py-2 text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#B8B3A2]"
+                style={{ borderColor: '#CCCABC' }}
+              />
+              <div className="flex justify-end mt-0.5">
+                <span className={`text-xs ${customMessage.length >= 150 ? 'text-amber-600' : 'text-[#B8B3A2]'}`}>
+                  {customMessage.length}/150
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
