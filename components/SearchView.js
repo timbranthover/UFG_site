@@ -9,8 +9,7 @@ const SearchView = ({
   searchError = null,
   hasSavedDrafts = false,
   savedFormsCount = 0,
-  operationsUpdate = null,
-  showMultiAccountHint = false
+  operationsUpdate = null
 }) => {
   const [accountSearch, setAccountSearch] = React.useState('');
   const [isLoaded, setIsLoaded] = React.useState(false);
@@ -192,47 +191,7 @@ const SearchView = ({
                 <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-4)' }}>{savedFormsCount} saved form{savedFormsCount === 1 ? '' : 's'}</p>
               </button>
             </div>
-
-            {/* ── Multi-account envelope entry ── */}
-            <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--app-card-border)' }}>
-              <button
-                onClick={onStartMultiEnvelope}
-                className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-                style={{ borderColor: 'var(--app-gray-1)', backgroundColor: 'white' }}
-                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--app-pastel-1)'; e.currentTarget.style.borderColor = 'var(--app-gray-2)'; }}
-                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; e.currentTarget.style.borderColor = 'var(--app-gray-1)'; }}
-              >
-                <div
-                  className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--app-pastel-2)' }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--app-bordeaux-1)' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>Multi-account envelope</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-4)' }}>Send forms across multiple accounts in one DocuSign envelope</p>
-                </div>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--app-gray-3)' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
           </div>
-
-          {/* ── Multi-account mode hint banner ── */}
-          {showMultiAccountHint && (
-            <div
-              className="flex items-start gap-3 px-4 py-3 rounded-md text-sm"
-              style={{ backgroundColor: '#EEF6FB', border: '1px solid #B3D9EE', color: '#0A5A80' }}
-            >
-              <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Search for your <strong>primary account</strong> above to start a multi-account envelope — you can add more accounts on the next screen.</span>
-            </div>
-          )}
         </div>
 
         <div
@@ -305,15 +264,21 @@ const SearchView = ({
             </div>
           </button>
 
-          <div className="md:col-span-5 w-full px-4 py-3 text-sm flex items-start gap-3 opacity-60 cursor-not-allowed" style={{ borderRadius: 'var(--app-radius)', border: '1px solid var(--app-gray-1)', backgroundColor: 'var(--app-pastel-1)' }}>
-            <svg className="w-5 h-5 mt-0.5" style={{ color: 'var(--app-gray-3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+          <button
+            onClick={onStartMultiEnvelope}
+            className="md:col-span-5 w-full text-left px-4 py-3 text-sm flex items-start gap-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+            style={{ borderRadius: 'var(--app-radius)', border: '1px solid var(--app-gray-1)', backgroundColor: 'white' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--app-pastel-1)'; e.currentTarget.style.borderColor = 'var(--app-gray-2)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'white'; e.currentTarget.style.borderColor = 'var(--app-gray-1)'; }}
+          >
+            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'var(--app-bordeaux-1)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             <div>
-              <p className="font-medium" style={{ color: 'var(--app-gray-6)' }}>What&apos;s new</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-3)' }}>Coming soon</p>
+              <p className="font-medium" style={{ color: 'var(--app-gray-6)' }}>Multi-account envelope</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-4)' }}>One envelope, multiple accounts</p>
             </div>
-          </div>
+          </button>
 
           <div className="md:col-span-12 px-4 py-3 text-sm flex items-start gap-3 opacity-60 cursor-not-allowed" style={{ borderRadius: 'var(--app-radius)', border: '1px solid var(--app-gray-1)', backgroundColor: 'var(--app-pastel-1)' }}>
             <svg className="w-5 h-5 mt-0.5" style={{ color: 'var(--app-gray-3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
