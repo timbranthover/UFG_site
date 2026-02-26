@@ -332,9 +332,7 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                                   if (flatIdx >= 0) setCurrentIndex(flatIdx);
                                   toggleFormExpansion(acct.accountNumber, code);
                                 }}
-                                className={`flex items-start gap-2 p-2 cursor-pointer transition-colors rounded ${
-                                  isCurrent ? 'bg-[#F5F0E1]' : 'hover:bg-[#ECEBE4]'
-                                }`}
+                                className="flex items-start gap-2 p-2 cursor-pointer transition-colors rounded hover:bg-[#ECEBE4]"
                               >
                                 <svg
                                   className={`w-3.5 h-3.5 text-[#7A7870] mt-0.5 flex-shrink-0 transition-transform ${isFormExpanded ? 'rotate-90' : ''}`}
