@@ -194,7 +194,7 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="mobile-package-view pb-28">
+    <div className="mobile-package-view pb-10">
 
       {/* Header with back nav */}
       <div className="flex items-center justify-between mb-6">
@@ -360,7 +360,7 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                                       .map(({ signer, orderIdx }) => (
                                         <div key={signer._nameKey} className="flex items-center gap-2 py-1">
                                           <span
-                                            className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                                            className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] leading-none font-bold text-white flex-shrink-0 select-none tabular-nums"
                                             style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
                                           >
                                             {orderIdx + 1}
@@ -402,7 +402,7 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                   return (
                     <div key={signer._nameKey} className="flex items-center gap-2">
                       <span
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] leading-none font-bold text-white flex-shrink-0 select-none tabular-nums"
                         style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
                       >
                         {idx + 1}
@@ -466,44 +466,48 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                 </span>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* ── Floating glass CTA ── */}
-      <div className="mobile-floating-action-wrap fixed bottom-5 inset-x-4 sm:inset-x-auto sm:right-6 z-30 flex justify-end pointer-events-none">
-        <div className="pointer-events-auto floating-glass">
-          <button
-            onClick={() => setShowSaveDraftModal(true)}
-            className="floating-clear hidden sm:inline-flex"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
-            </svg>
-            Save Draft
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={!canSend || isSending}
-            className={`floating-action ${!canSend || isSending ? 'is-disabled' : ''}`}
-          >
-            {isSending ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            {/* ── Action buttons ── */}
+            <div className="border-t border-[#CCCABC] pt-4 mt-4 space-y-2">
+              <button
+                onClick={() => setShowSaveDraftModal(true)}
+                className="w-full px-4 py-2 text-sm text-[#5A5D5C] bg-white border border-[#CCCABC] rounded-lg hover:bg-[#ECEBE4] flex items-center justify-center gap-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                 </svg>
-                Sending…
-              </>
-            ) : (
-              <>
-                Send for Signature
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                </svg>
-              </>
-            )}
-          </button>
+                Save draft
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={!canSend || isSending}
+                className={`w-full px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${
+                  !canSend
+                    ? 'bg-[#ECEBE4] text-[#8E8D83] cursor-not-allowed'
+                    : isSending
+                      ? 'bg-[#E60000] text-white shadow-sm opacity-75 cursor-not-allowed'
+                      : 'bg-[#E60000] text-white shadow-sm hover:bg-[#BD000C]'
+                }`}
+              >
+                {isSending ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Send for Signature
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
