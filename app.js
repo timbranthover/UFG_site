@@ -22,8 +22,8 @@ const App = () => {
     }
   });
   const [formsLibrarySeed, setFormsLibrarySeed] = React.useState(null);
-  const [autoOpenPicker, setAutoOpenPicker] = React.useState(false);
-  const [showMultiAccountHint, setShowMultiAccountHint] = React.useState(false);
+  const [showMultiStartModal, setShowMultiStartModal] = React.useState(false);
+  const [initialAdditionalAccounts, setInitialAdditionalAccounts] = React.useState([]);
 
   // Konami Code Easter Egg: ↑ ↑ ↓ ↓ ← → ← → B A
   React.useEffect(() => {
@@ -162,8 +162,14 @@ const App = () => {
   };
 
   const handleStartMultiEnvelope = () => {
-    setShowMultiAccountHint(true);
-    setAutoOpenPicker(true);
+    setShowMultiStartModal(true);
+  };
+
+  const handleMultiEnvelopeStart = (primaryAccount, additionalAccounts) => {
+    setCurrentAccount(primaryAccount);
+    setInitialAdditionalAccounts(additionalAccounts);
+    setView('results');
+    setShowMultiStartModal(false);
   };
 
   const handleSearch = (accountNumber) => {
@@ -329,8 +335,7 @@ const App = () => {
       setView('landing');
       setCurrentAccount(null);
       setSearchError(null);
-      setAutoOpenPicker(false);
-      setShowMultiAccountHint(false);
+      setInitialAdditionalAccounts([]);
     } else if (view === 'formsLibrary' || view === 'savedForms') {
       setFormsLibrarySeed(null);
       setView('landing');
@@ -339,6 +344,304 @@ const App = () => {
     } else if (view === 'multiPackage') {
       setView('results');
     }
+  };
+
+  // ── Multi-account start modal ─────────────────────────────────────────────────
+  // Two-step wizard: (1) search for primary account, (2) select compatible extras.
+  const MultiEnvelopeStartModal = () => {
+    const [step, setStep] = React.useState('search');
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [primaryAccount, setPrimaryAccount] = React.useState(null);
+    const [pendingAdditional, setPendingAdditional] = React.useState(new Set());
+
+    const searchResults = React.useMemo(() => {
+      const q = searchQuery.trim().toUpperCase();
+      if (!q) return [];
+      return Object.values(MOCK_ACCOUNTS).filter(a =>
+        a.accountNumber.toUpperCase().includes(q) ||
+        a.accountName.toUpperCase().includes(q)
+      ).slice(0, 6);
+    }, [searchQuery]);
+
+    const compatibleOptions = React.useMemo(() => {
+      if (!primaryAccount) return { compatible: [], incompatible: [] };
+      const primarySignerNames = new Set(primaryAccount.signers.map(s => s.name.toLowerCase()));
+      const related = Object.values(MOCK_ACCOUNTS).filter(a =>
+        a.accountNumber !== primaryAccount.accountNumber &&
+        a.signers.some(s => primarySignerNames.has(s.name.toLowerCase()))
+      );
+      const withCompat = related.map(candidate => {
+        const check = canAccountsShareEnvelope([primaryAccount, candidate]);
+        return { account: candidate, compatible: check.compatible, reason: check.reason };
+      });
+      return {
+        compatible: withCompat.filter(c => c.compatible),
+        incompatible: withCompat.filter(c => !c.compatible)
+      };
+    }, [primaryAccount]);
+
+    const toggleAdditional = (acctNum) => {
+      setPendingAdditional(prev => {
+        const next = new Set(prev);
+        if (next.has(acctNum)) next.delete(acctNum); else next.add(acctNum);
+        return next;
+      });
+    };
+
+    const handleSelectPrimary = (acct) => {
+      setPrimaryAccount(acct);
+      setStep('addMore');
+    };
+
+    const handleStart = () => {
+      const additional = compatibleOptions.compatible
+        .filter(c => pendingAdditional.has(c.account.accountNumber))
+        .map(c => c.account);
+      handleMultiEnvelopeStart(primaryAccount, additional);
+    };
+
+    React.useEffect(() => {
+      const onKey = (e) => { if (e.key === 'Escape') setShowMultiStartModal(false); };
+      document.addEventListener('keydown', onKey);
+      return () => document.removeEventListener('keydown', onKey);
+    }, []);
+
+    const ModalAccountTypeBadge = ({ acct }) => {
+      const typeColors = {
+        RMA_INDIVIDUAL: 'bg-blue-50 text-blue-700 border-blue-200',
+        RMA_JOINT:      'bg-purple-50 text-purple-700 border-purple-200',
+        TRUST:          'bg-amber-50 text-amber-700 border-amber-200',
+        IRA_ROTH:       'bg-emerald-50 text-emerald-700 border-emerald-200',
+        IRA_TRADITIONAL:'bg-teal-50 text-teal-700 border-teal-200',
+      };
+      const cls = typeColors[acct.accountTypeKey] || 'bg-gray-50 text-gray-600 border-gray-200';
+      return (
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border tracking-wide ${cls}`}>
+          {acct.accountType}
+        </span>
+      );
+    };
+
+    const selectedCompatibleCount = [...pendingAdditional].filter(num =>
+      compatibleOptions.compatible.some(c => c.account.accountNumber === num)
+    ).length;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4">
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-black bg-opacity-40" onClick={() => setShowMultiStartModal(false)} />
+
+        {/* Panel */}
+        <div
+          className="relative bg-white w-full max-w-md flex flex-col overflow-hidden"
+          style={{ borderRadius: 'var(--app-radius)', boxShadow: '0 24px 64px -12px rgba(0,0,0,0.35)', border: '1px solid var(--app-card-border)', maxHeight: 'min(76vh, 580px)' }}
+        >
+          {/* Header */}
+          <div className="px-5 pt-4 pb-3.5 border-b flex-shrink-0" style={{ borderColor: 'var(--app-card-border)' }}>
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                {step === 'addMore' && (
+                  <button
+                    onClick={() => { setStep('search'); setPrimaryAccount(null); setPendingAdditional(new Set()); }}
+                    className="p-1 -ml-1 rounded hover:bg-gray-100 flex-shrink-0"
+                    style={{ color: 'var(--app-gray-4)' }}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                )}
+                <div>
+                  <h2 className="text-base font-semibold" style={{ color: 'var(--app-gray-6)' }}>
+                    {step === 'search' ? 'Start a multi-account envelope' : 'Add accounts to envelope'}
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--app-gray-4)' }}>
+                    {step === 'search' ? 'Find the primary account to start' : 'Select additional accounts with shared signers'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMultiStartModal(false)}
+                className="p-1 rounded hover:bg-gray-100 ml-3 flex-shrink-0"
+                style={{ color: 'var(--app-gray-4)' }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Step 1 — search input */}
+            {step === 'search' && (
+              <div className="mt-3 relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="w-4 h-4" style={{ color: 'var(--app-gray-3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search by account number or name…"
+                  className="w-full pl-9 pr-4 py-2.5 text-sm focus:outline-none"
+                  style={{ border: '1px solid var(--app-input-border)', borderRadius: 'var(--app-radius)' }}
+                  onFocus={e => { e.target.style.boxShadow = '0 0 0 2px rgba(138,0,10,0.18)'; }}
+                  onBlur={e => { e.target.style.boxShadow = 'none'; }}
+                />
+              </div>
+            )}
+
+            {/* Step 2 — primary account pill */}
+            {step === 'addMore' && primaryAccount && (
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md" style={{ backgroundColor: 'var(--app-pastel-1)', border: '1px solid var(--app-card-border)' }}>
+                <span className="text-[10px] font-semibold uppercase tracking-widest flex-shrink-0" style={{ color: 'var(--app-gray-4)' }}>Primary</span>
+                <span className="font-mono text-xs font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>{primaryAccount.accountNumber}</span>
+                <span className="text-xs truncate" style={{ color: 'var(--app-gray-5)' }}>{primaryAccount.accountName}</span>
+                <ModalAccountTypeBadge acct={primaryAccount} />
+              </div>
+            )}
+          </div>
+
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 min-h-0">
+
+            {/* ── Step 1: search results ── */}
+            {step === 'search' && (
+              <>
+                {!searchQuery.trim() && (
+                  <div className="px-5 py-10 text-center">
+                    <svg className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--app-gray-2)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <p className="text-sm" style={{ color: 'var(--app-gray-4)' }}>Enter an account number or name to search</p>
+                  </div>
+                )}
+                {searchQuery.trim() && searchResults.length === 0 && (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-sm" style={{ color: 'var(--app-gray-4)' }}>No accounts found matching "{searchQuery}"</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--app-gray-3)' }}>Try searching by account number or account name</p>
+                  </div>
+                )}
+                {searchResults.map(acct => (
+                  <button
+                    key={acct.accountNumber}
+                    onClick={() => handleSelectPrimary(acct)}
+                    className="w-full text-left px-5 py-3.5 border-b hover:bg-[#F5F0E1]/70 transition-colors flex items-start gap-3"
+                    style={{ borderColor: 'var(--app-card-border)' }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>{acct.accountNumber}</span>
+                        <span className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>{acct.accountName}</span>
+                        <ModalAccountTypeBadge acct={acct} />
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--app-gray-4)' }}>{acct.signers.map(s => s.name).join(' · ')}</p>
+                    </div>
+                    <svg className="w-4 h-4 mt-1 flex-shrink-0" style={{ color: 'var(--app-gray-3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* ── Step 2: compatible additional accounts ── */}
+            {step === 'addMore' && (
+              <>
+                {compatibleOptions.compatible.length === 0 && compatibleOptions.incompatible.length === 0 && (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-sm" style={{ color: 'var(--app-gray-4)' }}>No other accounts share signers with this account.</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--app-gray-3)' }}>You can continue with just this account, or go back to choose a different one.</p>
+                  </div>
+                )}
+                {compatibleOptions.compatible.map(({ account: cand }) => {
+                  const isSelected = pendingAdditional.has(cand.accountNumber);
+                  return (
+                    <button
+                      key={cand.accountNumber}
+                      onClick={() => toggleAdditional(cand.accountNumber)}
+                      className={`w-full text-left px-5 py-3.5 border-b transition-colors flex items-start gap-3 ${isSelected ? 'bg-[#F5F0E1]' : 'hover:bg-[#F5F0E1]/60'}`}
+                      style={{ borderColor: 'var(--app-card-border)' }}
+                    >
+                      <div className={`mt-0.5 w-4 h-4 rounded flex-shrink-0 border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-[#8A000A] border-[#8A000A]' : 'bg-white border-[#CCCABC]'}`}>
+                        {isSelected && (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-bordeaux-1)' }}>{cand.accountNumber}</span>
+                          <span className="text-sm font-medium" style={{ color: 'var(--app-gray-6)' }}>{cand.accountName}</span>
+                          <ModalAccountTypeBadge acct={cand} />
+                        </div>
+                        <p className="text-xs" style={{ color: 'var(--app-gray-4)' }}>{cand.signers.map(s => s.name).join(' · ')}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+                {compatibleOptions.incompatible.length > 0 && (
+                  <>
+                    <div
+                      className="px-5 py-2 text-[11px] font-semibold uppercase tracking-widest"
+                      style={{ backgroundColor: 'var(--app-pastel-2)', color: 'var(--app-gray-4)', borderBottom: '1px solid var(--app-card-border)' }}
+                    >
+                      Not compatible with this envelope
+                    </div>
+                    {compatibleOptions.incompatible.map(({ account: cand, reason }) => (
+                      <div
+                        key={cand.accountNumber}
+                        className="px-5 py-3.5 border-b opacity-50 flex items-start gap-3"
+                        style={{ borderColor: 'var(--app-card-border)' }}
+                      >
+                        <div className="mt-0.5 w-4 h-4 rounded flex-shrink-0 border-2 bg-white border-[#CCCABC]" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                            <span className="font-mono text-sm font-bold" style={{ color: 'var(--app-gray-4)' }}>{cand.accountNumber}</span>
+                            <span className="text-sm font-medium" style={{ color: 'var(--app-gray-5)' }}>{cand.accountName}</span>
+                            <ModalAccountTypeBadge acct={cand} />
+                          </div>
+                          <p className="text-xs" style={{ color: '#8B5E0A' }}>{reason}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div
+            className="flex items-center justify-between px-5 py-3 border-t flex-shrink-0"
+            style={{ borderColor: 'var(--app-card-border)', backgroundColor: 'var(--app-pastel-1)' }}
+          >
+            <button
+              onClick={() => setShowMultiStartModal(false)}
+              className="text-sm px-3 py-1.5 rounded transition-colors hover:bg-gray-100"
+              style={{ color: 'var(--app-gray-4)' }}
+            >
+              Cancel
+            </button>
+            {step === 'addMore' && (
+              <button
+                onClick={handleStart}
+                className="text-sm font-semibold px-4 py-1.5 rounded transition-all text-white"
+                style={{ backgroundColor: 'var(--app-bordeaux-1)' }}
+              >
+                {selectedCompatibleCount > 0
+                  ? `Start with ${1 + selectedCompatibleCount} account${1 + selectedCompatibleCount > 1 ? 's' : ''} →`
+                  : 'Start with this account →'
+                }
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderActiveView = () => {
@@ -362,7 +665,6 @@ const App = () => {
             savedFormsCount={savedFormCodes.length}
             operationsUpdate={operationsUpdate}
             onStartMultiEnvelope={handleStartMultiEnvelope}
-            showMultiAccountHint={showMultiAccountHint}
           />
 
           <LandingWorkDashboard
@@ -383,11 +685,7 @@ const App = () => {
           account={currentAccount}
           onBack={handleBack}
           onContinue={handleContinueToPackage}
-          autoOpenPicker={autoOpenPicker}
-          onPickerOpened={() => {
-            setAutoOpenPicker(false);
-            setShowMultiAccountHint(false);
-          }}
+          initialAdditionalAccounts={initialAdditionalAccounts}
         />
       );
     }
@@ -494,6 +792,8 @@ const App = () => {
           {renderActiveView()}
         </div>
       </div>
+
+      {showMultiStartModal && <MultiEnvelopeStartModal />}
 
       <Toast />
 
