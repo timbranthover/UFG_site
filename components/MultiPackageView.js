@@ -138,8 +138,9 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
   };
 
   const handleSaveDraftConfirm = (draftName) => {
-    onSaveDraft(draftName, { formDataMap, signerDetails, customMessage });
+    onSaveDraft(draftName, { formDataMap, signerDetails, customMessage, signerOrder });
     setShowSaveDraftModal(false);
+    showToast({ message: `Draft "${draftName}" saved`, subtitle: 'View in My Work → Drafts' });
   };
 
   // ── Form fill renderer ───────────────────────────────────────────────────────
@@ -293,7 +294,10 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                     {/* Account row */}
                     <div
                       onClick={() => toggleAccountExpansion(acct.accountNumber)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-[#ECEBE4] transition-colors"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors"
+                      style={{ backgroundColor: 'var(--app-pastel-1)' }}
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--app-pastel-2)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--app-pastel-1)'; }}
                     >
                       <svg
                         className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150 ${isAcctExpanded ? 'rotate-90' : ''}`}
@@ -390,7 +394,10 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-[#404040]">Signing order</h3>
                 {orderedSigners.length >= 2 && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--app-gray-4)', borderColor: 'var(--app-gray-1)', backgroundColor: 'var(--app-pastel-2)' }}>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium flex items-center gap-1" style={{ color: 'var(--app-bronze-2)', borderColor: 'var(--app-bronze-1)', backgroundColor: '#FEF9EE' }}>
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
                     Sequential
                   </span>
                 )}
@@ -413,7 +420,7 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                           <select
                             value={currentEmail}
                             onChange={e => handleEmailChange(signer._nameKey, e.target.value)}
-                            className="w-full text-[11px] border border-[#CCCABC] rounded px-1.5 py-0.5 mt-0.5 focus:outline-none"
+                            className="w-full text-xs border border-[#CCCABC] rounded px-2 py-1 mt-1 focus:outline-none focus:ring-2 focus:ring-[#B8B3A2]"
                           >
                             {allEmails.map(e => <option key={e} value={e}>{e}</option>)}
                           </select>
@@ -425,17 +432,17 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                         <div className="flex flex-col gap-0.5 flex-shrink-0">
                           <button
                             onClick={() => moveSignerUp(idx)}
-                            className={`p-0.5 rounded transition-opacity ${idx === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
+                            className={`p-1 rounded transition-opacity ${idx === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
                           >
-                            <svg className="w-3 h-3 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3.5 h-3.5 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
                             </svg>
                           </button>
                           <button
                             onClick={() => moveSignerDown(idx)}
-                            className={`p-0.5 rounded transition-opacity ${idx === orderedSigners.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
+                            className={`p-1 rounded transition-opacity ${idx === orderedSigners.length - 1 ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:bg-[#ECEBE4]'}`}
                           >
-                            <svg className="w-3 h-3 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3.5 h-3.5 text-[#8E8D83]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                             </svg>
                           </button>
@@ -467,6 +474,23 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
               </div>
             </div>
 
+            {/* ── PDF-only warning (no DocuSign envelope will be created) ── */}
+            {(() => {
+              const allFormCodes = accounts.flatMap(({ forms }) => forms);
+              const allPdfOnly = allFormCodes.length > 0 && allFormCodes.every(code => {
+                const form = FORMS_DATA.find(f => f.code === code);
+                return form && form.pdfPath;
+              });
+              return allPdfOnly ? (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-md text-xs mt-4" style={{ backgroundColor: '#FFF8E1', border: '1px solid #F5C842', color: '#8B5E0A' }}>
+                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>These forms don&apos;t use DocuSign templates. No signing envelope will be created — forms will be saved to My Work without a signing link.</span>
+                </div>
+              ) : null;
+            })()}
+
             {/* ── Action buttons ── */}
             <div className="border-t border-[#CCCABC] pt-4 mt-4 space-y-2">
               <button
@@ -478,34 +502,44 @@ const MultiPackageView = ({ multiAccountData, onBack, onSendForSignature, onSave
                 </svg>
                 Save draft
               </button>
-              <button
-                onClick={handleSend}
-                disabled={!canSend || isSending}
-                className={`w-full px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${
-                  !canSend
-                    ? 'bg-[#ECEBE4] text-[#8E8D83] cursor-not-allowed'
-                    : isSending
-                      ? 'bg-[#E60000] text-white shadow-sm opacity-75 cursor-not-allowed'
-                      : 'bg-[#E60000] text-white shadow-sm hover:bg-[#BD000C]'
-                }`}
-              >
-                {isSending ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Sending…
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    Send for Signature
-                  </>
+              {/* Send button wrapped in relative/group for hover tooltip when disabled */}
+              <div className="relative group">
+                <button
+                  onClick={handleSend}
+                  disabled={!canSend || isSending}
+                  className={`w-full px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-medium transition-all ${
+                    !canSend
+                      ? 'bg-[#ECEBE4] text-[#8E8D83] cursor-not-allowed pointer-events-none'
+                      : isSending
+                        ? 'bg-[#E60000] text-white shadow-sm opacity-75 cursor-not-allowed'
+                        : 'bg-[#E60000] text-white shadow-sm hover:bg-[#BD000C]'
+                  }`}
+                >
+                  {isSending ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Sending…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send for Signature
+                    </>
+                  )}
+                </button>
+                {/* Tooltip — only shows when disabled (pointer-events on wrapper) */}
+                {!canSend && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#404040] bg-opacity-90 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                    Assign at least one signer to continue
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#404040]" />
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
           </div>
         </div>

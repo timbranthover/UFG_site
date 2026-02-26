@@ -22,6 +22,8 @@ const App = () => {
     }
   });
   const [formsLibrarySeed, setFormsLibrarySeed] = React.useState(null);
+  const [autoOpenPicker, setAutoOpenPicker] = React.useState(false);
+  const [showMultiAccountHint, setShowMultiAccountHint] = React.useState(false);
 
   // Konami Code Easter Egg: ↑ ↑ ↓ ↓ ← → ← → B A
   React.useEffect(() => {
@@ -157,6 +159,11 @@ const App = () => {
     }
 
     setView('admin');
+  };
+
+  const handleStartMultiEnvelope = () => {
+    setShowMultiAccountHint(true);
+    setAutoOpenPicker(true);
   };
 
   const handleSearch = (accountNumber) => {
@@ -322,6 +329,8 @@ const App = () => {
       setView('landing');
       setCurrentAccount(null);
       setSearchError(null);
+      setAutoOpenPicker(false);
+      setShowMultiAccountHint(false);
     } else if (view === 'formsLibrary' || view === 'savedForms') {
       setFormsLibrarySeed(null);
       setView('landing');
@@ -352,6 +361,8 @@ const App = () => {
             hasSavedDrafts={workItems.drafts.length > 0}
             savedFormsCount={savedFormCodes.length}
             operationsUpdate={operationsUpdate}
+            onStartMultiEnvelope={handleStartMultiEnvelope}
+            showMultiAccountHint={showMultiAccountHint}
           />
 
           <LandingWorkDashboard
@@ -372,6 +383,11 @@ const App = () => {
           account={currentAccount}
           onBack={handleBack}
           onContinue={handleContinueToPackage}
+          autoOpenPicker={autoOpenPicker}
+          onPickerOpened={() => {
+            setAutoOpenPicker(false);
+            setShowMultiAccountHint(false);
+          }}
         />
       );
     }

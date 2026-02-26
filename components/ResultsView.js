@@ -1,4 +1,4 @@
-const ResultsView = ({ account, onBack, onContinue }) => {
+const ResultsView = ({ account, onBack, onContinue, autoOpenPicker = false, onPickerOpened = () => {} }) => {
   // ── Single-mode state ────────────────────────────────────────────────────────
   const [selectedForms, setSelectedForms] = React.useState([]);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -10,6 +10,15 @@ const ResultsView = ({ account, onBack, onContinue }) => {
   const [showAccountPicker, setShowAccountPicker] = React.useState(false);
   const [sectionQueries, setSectionQueries] = React.useState({});
   const [expandedSections, setExpandedSections] = React.useState({});
+  const [showMultiModeBanner, setShowMultiModeBanner] = React.useState(false);
+
+  // ── Auto-open picker (from landing page entry point) ─────────────────────────
+  React.useEffect(() => {
+    if (autoOpenPicker && additionalAccounts.length === 0) {
+      setShowAccountPicker(true);
+      onPickerOpened();
+    }
+  }, []);
 
   const isMultiMode = additionalAccounts.length > 0;
 
@@ -74,6 +83,7 @@ const ResultsView = ({ account, onBack, onContinue }) => {
     }
     if (seedPrimary) {
       setPerAccountForms({ [account.accountNumber]: [...selectedForms], ...newPerAccount });
+      setShowMultiModeBanner(true);
     } else {
       setPerAccountForms(prev => ({ ...prev, ...newPerAccount }));
     }
@@ -491,7 +501,36 @@ const ResultsView = ({ account, onBack, onContinue }) => {
                 <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M4.93 19h14.14c1.54 0 2.5-1.67 1.73-3L13.73 3.7c-.77-1.33-2.69-1.33-3.46 0L3.2 16c-.77 1.33.19 3 1.73 3z" />
                 </svg>
-                <span>{compatibilityInfo.reason} — remove the highlighted account to continue.</span>
+                <span>
+                  {compatibilityInfo.incompatibleAccounts && compatibilityInfo.incompatibleAccounts.length > 0
+                    ? <><strong>{compatibilityInfo.incompatibleAccounts.join(', ')}</strong> {compatibilityInfo.incompatibleAccounts.length > 1 ? 'are' : 'is'} not compatible — {compatibilityInfo.reason.charAt(0).toLowerCase() + compatibilityInfo.reason.slice(1)}. Remove {compatibilityInfo.incompatibleAccounts.length > 1 ? 'them' : 'it'} to continue.</>
+                    : <>{compatibilityInfo.reason} — remove the highlighted account to continue.</>
+                  }
+                </span>
+              </div>
+            )}
+
+            {/* Multi-mode active banner */}
+            {showMultiModeBanner && (
+              <div
+                className="flex items-center justify-between px-3 py-2 rounded-md text-xs mt-3"
+                style={{ backgroundColor: '#EEF6FB', border: '1px solid #B3D9EE', color: '#0A5A80' }}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Multi-account envelope active — select forms for each account below, then continue.</span>
+                </div>
+                <button
+                  onClick={() => setShowMultiModeBanner(false)}
+                  className="ml-3 flex-shrink-0 p-0.5 rounded hover:bg-[#B3D9EE]/40 transition-colors"
+                  style={{ color: '#0A5A80' }}
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             )}
           </div>
@@ -536,11 +575,22 @@ const ResultsView = ({ account, onBack, onContinue }) => {
                   <AccountTypeBadge acct={acct} />
 
                   <div className="ml-auto flex items-center gap-3">
-                    {selected.length > 0 && (
-                      <span className="text-xs font-medium" style={{ color: '#00759E' }}>
-                        {selected.length} form{selected.length !== 1 ? 's' : ''} selected
-                      </span>
-                    )}
+                    {/* Readiness indicator — ✓ when forms selected, ○ when empty */}
+                    <span
+                      className="flex items-center gap-1 text-xs font-medium transition-colors"
+                      style={{ color: selected.length > 0 ? '#1A8A4A' : 'var(--app-gray-3)' }}
+                    >
+                      {selected.length > 0 ? (
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="9" />
+                        </svg>
+                      )}
+                      {selected.length > 0 ? `${selected.length} form${selected.length !== 1 ? 's' : ''}` : 'No forms'}
+                    </span>
                     {acct.accountNumber !== account.accountNumber && (
                       <button
                         onClick={e => { e.stopPropagation(); handleRemoveAccount(acct); }}
@@ -610,7 +660,7 @@ const ResultsView = ({ account, onBack, onContinue }) => {
                                 checked={isSelected}
                                 onChange={() => {}}
                                 disabled={!canSelectForm}
-                                className="w-4 h-4 rounded pointer-events-none accent-[#404040] flex-shrink-0"
+                                className="w-4 h-4 rounded pointer-events-none accent-[#8A000A] flex-shrink-0"
                               />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
