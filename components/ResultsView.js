@@ -1,24 +1,26 @@
-const ResultsView = ({ account, onBack, onContinue, autoOpenPicker = false, onPickerOpened = () => {} }) => {
+const ResultsView = ({ account, onBack, onContinue, initialAdditionalAccounts = [] }) => {
   // ── Single-mode state ────────────────────────────────────────────────────────
   const [selectedForms, setSelectedForms] = React.useState([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const debouncedQuery = useDebounce(searchQuery);
 
-  // ── Multi-mode state ─────────────────────────────────────────────────────────
-  const [additionalAccounts, setAdditionalAccounts] = React.useState([]);
-  const [perAccountForms, setPerAccountForms] = React.useState({});
+  // ── Multi-mode state — seeded from modal if launched via multi-account entry ──
+  const [additionalAccounts, setAdditionalAccounts] = React.useState(initialAdditionalAccounts);
+  const [perAccountForms, setPerAccountForms] = React.useState(() => {
+    if (initialAdditionalAccounts.length === 0) return {};
+    const init = { [account.accountNumber]: [] };
+    for (const a of initialAdditionalAccounts) { init[a.accountNumber] = []; }
+    return init;
+  });
   const [showAccountPicker, setShowAccountPicker] = React.useState(false);
   const [sectionQueries, setSectionQueries] = React.useState({});
-  const [expandedSections, setExpandedSections] = React.useState({});
-  const [showMultiModeBanner, setShowMultiModeBanner] = React.useState(false);
-
-  // ── Auto-open picker (from landing page entry point) ─────────────────────────
-  React.useEffect(() => {
-    if (autoOpenPicker && additionalAccounts.length === 0) {
-      setShowAccountPicker(true);
-      onPickerOpened();
-    }
-  }, []);
+  const [expandedSections, setExpandedSections] = React.useState(() => {
+    if (initialAdditionalAccounts.length === 0) return {};
+    const init = {};
+    for (const a of [account, ...initialAdditionalAccounts]) { init[a.accountNumber] = true; }
+    return init;
+  });
+  const [showMultiModeBanner, setShowMultiModeBanner] = React.useState(initialAdditionalAccounts.length > 0);
 
   const isMultiMode = additionalAccounts.length > 0;
 
