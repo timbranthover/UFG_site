@@ -533,9 +533,21 @@ const MyWorkView = ({ onBack, onLoadDraft, onDeleteDraft, workItems = MOCK_HISTO
               <tr key={item.id} className="odd:bg-white even:bg-[#F5F0E1]/20 hover:bg-[#ECEBE4]/30 transition-colors">
                 <td data-label="To" className="px-6 py-4 align-middle">
                   <div className="space-y-1.5">
-                    <span className="inline-flex items-center rounded-md border border-[#CCCABC] bg-[#F5F0E1] px-2 py-0.5 text-xs font-semibold tracking-wide text-[#5A5D5C]">
-                      {item.account}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-md border border-[#CCCABC] bg-[#F5F0E1] px-2 py-0.5 text-xs font-semibold tracking-wide text-[#5A5D5C]">
+                        {item.account}
+                      </span>
+                      {item.isMultiAccount && item.accounts && item.accounts.length > 1 && (
+                        <span className="relative group inline-flex">
+                          <span className="inline-flex items-center rounded-md border border-[#CCCABC] bg-white px-2 py-0.5 text-xs font-medium text-[#8E8D83] cursor-default">
+                            +{item.accounts.length - 1}
+                          </span>
+                          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-gray-900 bg-opacity-90 text-white text-[11px] rounded px-2 py-1 whitespace-nowrap z-20">
+                            {item.accounts.join(' · ')}
+                          </div>
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm font-medium text-[#404040] leading-5">{item.names}</p>
                   </div>
                   {item.draftName && workTab === 'drafts' && (
